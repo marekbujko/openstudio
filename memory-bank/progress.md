@@ -1,189 +1,101 @@
-# Progress: OpenStudio
+# OpenStudio — Progress Tracker
 
-**Last Updated**: 2026-03-14 (Signal UX Redesign Complete)
+**Updated**: 2026-05-25 (v0.3.2 cut — capability gating + cloud LLM support)
 
-## What's Working
+## v0.3.2 Release ✅ (2026-05-25)
+- ✅ `GET /api/capabilities` endpoint added — `server/lib/capabilities.js` probes ffmpeg, ffprobe, whisper.cpp binary, Whisper model file, and LLM endpoint configuration; in-memory 60 s cache
+- ✅ Frontend capability gating — `web/js/capability-modal.js` reads `/api/capabilities` on load, disables Transcribe / Show Notes / MP3 format option when prereqs are missing
+- ✅ Gated buttons open an info modal with the exact install commands for the missing dependency; modal DOM in `web/index.html`, styles in `web/css/studio.css`
+- ✅ Cloud LLM providers supported via `LLM_API_KEY` env var — show-notes generator sends `Authorization: Bearer <key>` when set; works with OpenAI, Together AI, Groq, and any OpenAI-compatible shim (litellm, anthropic-openai-compat). Local providers (LM Studio, Ollama, llama.cpp server) unchanged.
+- ✅ README "Optional AI Tooling" rewritten with per-provider `.env` snippets (LM Studio, Ollama, OpenAI, Together, Groq, Anthropic-via-shim) and a Feature Gating subsection
+- ✅ Behavior purely additive — when all prereqs are present, UI is visually identical to v0.3.1
+- ✅ Version 0.3.1 → 0.3.2
+- See `tasks/2026-05/260525_v032_capability_gating.md`
 
-### Infrastructure
+## v0.3.1 Release ✅ (2026-05-25)
+- ✅ MP3 export from the recording deck now produces a real MP3 (was throwing `ReferenceError`; also fixed pre-existing multipart parser bug where the last form field swallowed the trailing boundary, silently defaulting to WAV)
+- ✅ `POST /api/export/zip` defined and tested — streams a single archive of all tracks via `archiver`, 500 MB cap, preserves filenames
+- ✅ Studio UI "Download All" wired to the zip endpoint; falls back to per-track downloads on any failure
+- ✅ Show-notes LLM endpoint env-driven via `LLM_BASE_URL` / `LLM_MODEL`; default `http://localhost:1234/v1` / `qwen3.5-35b`; removed hardcoded private dev IP
+- ✅ README rewritten — features grouped (Broadcast core / Recording & post-production / Optional AI tooling / Security & ops); new "Optional AI Tooling" section with whisper.cpp + LLM setup; new "Known Gaps" section; Roadmap updated
+- ✅ Version 0.3.0 → 0.3.1
+- ✅ Smoke-tested on host node process; all paths verified
+- See `tasks/2026-05/260525_v031_fixes.md`
 
-✅ **Release 0.1.0 Complete** (20/20 tasks, shipped 2026-03-12)
-- Full WebRTC mesh signaling, Web Audio mix-minus, Icecast streaming
-- All automated tests passing (18/18)
-- Browser compatibility: Brave, Chrome, Firefox, Safari
+## v0.3.0 Release Cut ✅ (2026-05-25)
+- ✅ `package.json` bumped 0.2.0 → 0.3.0
+- ✅ Self-hosted Inter / JetBrains Mono / Space Grotesk as variable woff2 (latin subset, ~100 KB total in `web/fonts/`); removed Google Fonts CDN dependency
+- ✅ `server/lib/static-server.js` adds `.woff2` / `.woff` MIME types
+- ✅ Connection-status pill moved from header center back to header right (regression from Signal redesign `490fdc9`); header grid simplified, mobile responsive grid updated
+- ✅ Verified via Chrome DevTools MCP — zero external font requests, status pill 40px from right edge
+- See `tasks/2026-05/250526_v030_release.md`
 
-✅ **Release 0.2.0 Implementation Complete** (5 phases, shipped 2026-03-13)
-- Single-server architecture (one process, one port)
-- Multi-track recording (per-participant + program mix)
-- README repositioned for conversion
-- Deployment configuration for openstudio.zerologic.com
-- DX improvements (Codespaces, CI, templates)
+## v0.3 Core Features (Complete)
+- ✅ WebRTC audio mesh with mix-minus per participant
+- ✅ Per-participant gain + mute controls via compressor nodes
+- ✅ Stereo program bus merger → analyser meters (segmented LEDs + waveform)
+- ✅ Multi-track recording (per-participant + program mix via MediaRecorder API)
+- ✅ Icecast streaming support (host/ops only)
+- ✅ JWT room tokens, per-IP limits, CORS allowlist, binary-safe multipart parsing
+- ✅ Signal UX redesign — Space Grotesk / Inter / JetBrains Mono (self-hosted v0.3.0), void/signal color system, ON AIR animations
+- ✅ WebSocket signaling protocol with ICE config delivery
+- ✅ Station manifest configuration
 
-### Code — v0.2.0 Changes
+## Podcast Production (Power Move)
 
-✅ **Phase 1: Single-Server Architecture**
-- `server/lib/static-server.js` — Serves web/ with MIME types, directory traversal prevention
-- `server/lib/icecast-listener-proxy.js` — Proxies GET /stream/* to Icecast on port 6737
-- `server/server.js` — Integrated static serving + proxy routes (health → API → proxy → static → 404)
-- `web/js/signaling-client.js` — Dynamic WebSocket URL from `location.protocol`/`location.host`
-- `web/js/rtc-manager.js` — Dynamic API URL from `location.origin`
-- `web/js/icecast-streamer.js` — Dynamic host from `location.hostname`
-- `web/index.html` — Stream URL uses `/stream/live.opus` proxy path
-- `server/lib/config-loader.js` — Auto-copies sample config on first run
-- `package.json` — v0.2.0 with `npm start`, `npm run dev`, `npm test`, `npm install`
+### Task 1: Show Notes from Transcript ✅ COMPLETE (v0.3.0)
+- Server endpoint `/api/export/show-notes` with LLM-powered title/summary
+- UI panel: transcribe → auto-generate show notes + segment markers + copy/download as markdown
+- v0.3.1: LLM endpoint now env-driven (`LLM_BASE_URL` / `LLM_MODEL`), defaults to LM Studio's standard `localhost:1234`
+- Fallback: generates title/summary from transcript text if LLM unreachable
 
-✅ **Phase 2: README Repositioning**
-- `README.md` — 584 lines → 122 lines, conversion-optimized with comparison table
-- `docs/vision.md` — Full original README preserved
+### Task 2: MP3 Export Alongside WAV ✅ COMPLETE (actually works as of v0.3.1)
+- Server extracts `outputFormat` from multipart form field
+- ffmpeg `-codec:a libmp3lame -qscale:a 2` transcode when MP3 selected
+- Returns `audio/mpeg` with clean filename
+- v0.3.1 unbroke this: missing `run()` import + multipart parser bug that swallowed `outputFormat` value
 
-✅ **Phase 3: Deployment Configuration**
-- `deploy/Caddyfile` — Reverse proxy for openstudio.zerologic.com
-- `deploy/docker-compose.prod.yml` — Production Icecast + coturn
-- `deploy/openstudio.service` — systemd unit file
-- `deploy/station-manifest.production.json` — Production ICE config
-- `deploy/setup.sh` — Automated deployment script
-- `server/lib/room-manager.js` — Room TTL support (env `ROOM_TTL_MS`, 60s check interval)
+### Task 3: Download All Tracks as Zip Bundle ✅ COMPLETE (v0.3.1)
+- `POST /api/export/zip` streams all tracks back as a single archive via `archiver`
+- Studio UI "Download All" wired to the new endpoint; falls back to per-track downloads on failure
+- 500 MB cap, preserves filenames from `Content-Disposition`
 
-✅ **Phase 4: Recording Feature**
-- `web/js/recording-manager.js` — Multi-track MediaRecorder with timer, download, auto-format detection
-- `web/js/wav-encoder.js` — Client-side WebM→WAV converter via OfflineAudioContext
-- `web/js/audio-graph.js` — Recording tap points (MediaStreamDestination per participant gain node)
-- `web/index.html` — Recording UI section (record/stop/download, timer, indicator)
-- `web/css/studio.css` — Recording styles (pulsing indicator, track download list)
-- `web/js/main.js` — Full recording integration (start/stop/download, auto-record new participants, broadcast state)
-- `server/lib/websocket-server.js` — `recording-state` broadcast handler
-- `web/js/signaling-client.js` — `recording-state` event dispatch
-
-✅ **Phase 5: DX Improvements**
-- `.devcontainer/devcontainer.json` — GitHub Codespaces support
-- `.github/ISSUE_TEMPLATE/bug_report.yml` — Bug report form
-- `.github/ISSUE_TEMPLATE/feature_request.yml` — Feature request form
-- `.github/PULL_REQUEST_TEMPLATE.md` — PR template
-- `.github/workflows/ci.yml` — Node 18/20/22 matrix, npm caching, removed python http.server
-
-### Verification Results (v0.2.0)
-
-✅ 18/18 server tests passing (signaling: 9/9, rooms: 9/9)
-✅ Static file serving: HTML (200), JS (200), CSS (200) with correct MIME types
-✅ Directory traversal prevention: `%2e%2e/package.json` → 404
-✅ Icecast listener proxy: `/stream/live.opus` → 502 (expected, no Icecast running)
-✅ Health endpoint: `/health` → 200
-✅ API endpoint: `/api/station` → 200
-✅ Auto-config: `station-manifest.json` created from sample on first run
-✅ `npm start` serves full studio at `localhost:6736`
-
-### v0.2.1 Security Hardening (PR #1 Open — CI Green)
-
-**Server-Side**:
-✅ `server/lib/auth.js` — JWT room tokens (24h) + invite tokens (4h)
-✅ `server/lib/websocket-server.js` — Rate limiting, per-IP connection limits, JWT integration, RBAC
-✅ `server/lib/message-validator.js` — UUID v4 validation for peerId
-✅ `server/lib/static-server.js` — X-Content-Type-Options: nosniff
-✅ `server/lib/icecast-listener-proxy.js` — Path sanitization (traversal + /admin blocked), CORS
-✅ `server/server.js` — Security headers, CORS allowlist, ICE config via signaling
-✅ `icecast/entrypoint.sh` — Credential validation (fail-fast, no insecure defaults)
-✅ `server/Dockerfile` — Non-root user (appuser), healthcheck
-✅ `deploy/docker-compose.prod.yml` — Icecast bound to 127.0.0.1
-
-**Client-Side**:
-✅ `web/js/signaling-client.js` — roomToken storage, invite token support, requestInviteToken()
-✅ `web/js/rtc-manager.js` — setIceServers() from signaling, fallback API fetch
-✅ `web/js/main.js` — ICE from signaling, role-based UI, debug globals localhost-only
-✅ `web/js/icecast-streamer.js` — Dynamic host
-
-**Tests**:
-✅ `server/test-signaling.js` — Updated peer IDs to valid UUID v4
-✅ `server/test-rooms.js` — Updated peer IDs to valid UUID v4
-
-**Config**:
-✅ `.env.example` — JWT_SECRET, ROOM_TTL_MS
-✅ `station-manifest.sample.json` — TURN creds marked CHANGE_ME
-✅ `deploy/station-manifest.production.json` — TURN creds marked CHANGE_ME
-
-**CI Fixes** (resolved during PR):
-✅ Removed `cache: npm` from CI — lock files are gitignored
-✅ Switched `npm ci` → `npm install` in CI
-✅ Updated all 7 Playwright test URLs from port 8086 → 6736
-✅ Fixed `test-program-bus.mjs` headed → headless for CI
-✅ Increased return-feed test timeouts (WebRTC renegotiation flaky in CI)
-✅ Added retry for return-feed test, `fail-fast: false` on matrix
-
-### Signal UX Redesign (Branch: feat/signal-ux-redesign — 2026-03-14)
-
-✅ **Complete Visual Redesign — "Signal" Design System**
-- `web/index.html` — Google Fonts, signal chain layout, wordmark+tagline, waveform canvas, deck panels
-- `web/css/studio.css` — Complete rewrite: void/signal/data color palette, scan lines/vignette/noise atmosphere, ON AIR animations, channel strip cards, transport controls, deck panels, segmented LED meters
-- `web/js/main.js` — `body.broadcasting` state management, speaking detection, card enter/exit animations, deck panel toggle, empty state text, role display names (Caller/Engineer), waveform init
-- `web/js/volume-meter.js` — Segmented LED mode (32/16 segments), waveform oscilloscope mode, amber→red color ramp, ghost segments, peak hold, speaking callback, HiDPI support
-
-**Verification Results**:
-✅ All 3 E2E tests passing (WebRTC, Recording, Return Feed)
-✅ No console errors from CSS/JS changes
-✅ No new files created (4 existing files modified)
+### Task 4: Click-to-Cut on Transcript ⏳ TODO
+### Task 5: Per-Segment Recording ⏳ TODO
+### Task 6: Episode Metadata Export (ID3 tags) ⏳ TODO
+### Task 7: Auto-Chapter Markers in Audio (VTT/ICU) ⏳ TODO
+### Task 8: Multi-Track to Final Export ⏳ TODO
 
 ## What's Next
 
 ### Immediate
+1. **Deploy v0.3.2 to production** — `openstudio.zerologic.com` (Power Move + v0.3.0 + v0.3.1 + v0.3.2 not yet live)
+2. **AI setup script** (`setup-ai.sh`) — automate whisper.cpp clone, build, and model download; with capability gating now in place, a single script + a page refresh would light up Transcribe + Show Notes in one shot
+3. **Resume podcast Tasks 4-8** — click-to-cut on transcript, per-segment recording, ID3 tags, chapter markers, multi-track to final export
 
-1. **Merge Signal UX branch** — `feat/signal-ux-redesign` → main
-2. **Merge PR #1** — https://github.com/msitarzewski/openstudio/pull/1 (v0.2.1 Security, CI green)
-3. **Deploy to umacbookpro** — `git pull` + `systemctl --user restart openstudio` on umacbookpro
-4. **Manual visual QA** — Load in Chrome, Firefox, Safari; test responsive breakpoints; test prefers-reduced-motion
+### Short Term
+1. **favicon.ico** — silence the lone 404 noted during v0.3.0 verification
+2. **Per-participant waveform** (stretch from Signal plan) — replace static avatar with live waveform
+3. **Broadcast tone** (optional) — 1kHz / 150ms cue at ON AIR transition
+4. **Invite-link UI** — server supports `request-invite` and the client knows how to consume invite tokens, but there's no host UI to mint one (deferred to 0.4)
 
-### Short Term (Next Sprint)
-
-1. **Per-participant waveform** (stretch goal from Signal plan) — Replace static avatar with live waveform
-2. **Broadcast tone** (optional) — 1kHz sine wave, 150ms, marks ON AIR moment
-3. **Self-host fonts** — Remove Google Fonts CDN dependency for zero-external-dependency
-4. **WAV export UI button** — Add "Export WAV" next to each track download
-5. **Recording size monitoring** — Show estimated size during recording, warn at 500MB
-6. **Invite URL UI** — Add "Copy Invite Link" button using invite tokens
-
-### Release 0.3 (Planned)
-
+### Release 0.4 (Planned — Discovery & Identity)
 - DHT station discovery (WebTorrent or libp2p)
 - Nostr NIP-53 integration
-- Ed25519 keypair generation for station identities
+- Ed25519 station identities
 
-### Release 0.4 (Planned)
-
+### Release 0.5 (Planned — Scale)
 - SFU for larger rooms (25+ participants)
-- Soundboard/jingle playback
+- Soundboard / jingle playback
 - Text chat
 
-## Release Roadmap
-
-### Release 0.1.0 — MVP ✅ (Shipped 2026-03-12)
-**Status**: Complete (20/20 tasks)
-- WebRTC mesh signaling, Web Audio mix-minus, per-participant controls
-- Icecast streaming, mute controls, role system
-- Docker infrastructure, automated tests
-
-### Release 0.2.0 — Single Server + Recording ✅ (Shipped 2026-03-13)
-**Status**: Implementation complete (5/5 phases)
-- Single-server architecture (`npm start` → working studio)
-- Multi-track recording (per-participant + program mix)
-- README repositioned for conversion
-- Deployment config for openstudio.zerologic.com
-- DX: Codespaces, CI matrix, GitHub templates
-
-### Release 0.2.1 — Security Hardening 🔒 (PR Open 2026-03-13)
-**Status**: PR #1 open, CI green (Node 18/20/22), awaiting merge
-- JWT room tokens + invite tokens (`server/lib/auth.js`)
-- WebSocket rate limiting (100 signaling/10s, 500 stream/10s) + per-IP connection limit (10)
-- HTTP security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
-- CORS origin allowlist (`ALLOWED_ORIGINS` env var)
-- Icecast proxy path sanitization (traversal + /admin blocked)
-- Role-based access control (streaming, invites, muting)
-- ICE credentials moved from public API to authenticated WebSocket flow
-- Icecast entrypoint credential validation (fail-fast)
-- Docker non-root user, healthcheck
-- UUID v4 validation for peer IDs
-- Test suite updated for new validation rules
-
-### Release 0.3 — Discovery (Planned)
-- DHT station discovery, Nostr NIP-53
-- Station identities with Ed25519 keypairs
-
-### Release 0.4 — Scale (Planned)
-- SFU for larger rooms
-- Soundboard, text chat
+## Technical Notes
+- All podcast features built on `main` branch (power-move already merged)
+- `GET /api/capabilities` (v0.3.2) is the single source of truth for AI feature availability; backend probes filesystem + env, 60 s cache, frontend renders gated state from the snapshot
+- LLM endpoint via `LLM_BASE_URL` / `LLM_MODEL` env vars; default `http://localhost:1234/v1` / `qwen3.5-35b` (matches LM Studio's standard port). Operators on non-default host/port override via `.env`. Graceful fallback when unreachable.
+- `LLM_API_KEY` env var (v0.3.2) enables cloud OpenAI-compatible providers (OpenAI, Together, Groq, plus Anthropic via litellm/anthropic-openai-compat shim). Local providers (LM Studio, Ollama, llama.cpp server) leave it blank.
+- whisper.cpp models stored in `models/` directory (auto-download from HuggingFace on first transcribe, ~1.5 GB for `ggml-medium.bin`)
+- whisper.cpp is a gitlink without `.gitmodules` config — clone setup is manual, not via `git submodule update`
+- ffmpeg pipeline: silence detect → filler splice → concat segments → two-pass loudnorm to -16 LUFS → optional MP3 transcode (`libmp3lame -qscale:a 2`)
+- Self-hosted fonts use variable woff2 (latin subset only); non-Latin glyphs fall back to system fonts
+- `archiver` is now an explicit `server/package.json` dep — a fresh clone needs `cd server && npm install` before the signaling server can boot

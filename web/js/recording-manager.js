@@ -232,6 +232,46 @@ export class RecordingManager extends EventTarget {
   }
 
   /**
+   * Bundle all tracks server-side into a single zip and download it.
+   * Falls back to per-track download on any failure.
+   * @param {{ program: Blob|null, tracks: Map<string, Blob> }} recordings
+   * @param {Map<string, string>} peerNames - peerId -> display name
+   */
+  async bundleAndDownload(recordings, peerNames) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const ext = this.getFileExtension();
+    const formData = new FormData();
+
+    try {
+      if (recordings.program) {
+        formData.append('audio', recordings.program, `openstudio-mix-${timestamp}.${ext}`);
+      }
+
+      for (const [peerId, blob] of recordings.tracks) {
+        const name = peerNames?.get(peerId) || peerId.substring(0, 8);
+        const safeName = name.replace(/[^a-zA-Z0-9-_]/g, '_');
+        formData.append('audio', blob, `openstudio-${safeName}-${timestamp}.${ext}`);
+      }
+
+      const response = await fetch('/api/export/zip', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        throw new Error(`Bundle failed (${response.status}): ${errText}`);
+      }
+
+      const zipBlob = await response.blob();
+      this.downloadTrack(zipBlob, `openstudio-bundle-${timestamp}.zip`);
+    } catch (err) {
+      console.warn('bundleAndDownload failed, falling back to per-track downloads:', err);
+      this.downloadAll(recordings, peerNames);
+    }
+  }
+
+  /**
    * Get the best supported MIME type for recording
    */
   getSupportedMimeType() {
@@ -289,5 +329,67 @@ export class RecordingManager extends EventTarget {
       }
     }
     return total;
+  }
+
+  /**
+   * Export a single track blob to the server for cleaning
+   * @param {Blob} blob - The audio blob to export
+   * @param {string} mode - 'raw' or 'clean'
+   * @param {object} [options] - Export options (only used for 'clean')
+   * @returns {Promise<Blob>} - The exported audio blob
+   */
+  async exportTrack(blob, mode, options = {}) {
+    if (mode === 'raw') {
+      return blob;
+    }
+
+    // Send to /api/export/clean endpoint
+    const formData = new FormData();
+    formData.append('audio', blob, 'recording.webm');
+
+    if (options.fillerSensitivity) {
+      formData.append('fillerSensitivity', options.fillerSensitivity);
+    }
+    if (options.silenceThreshold) {
+      formData.append('silenceThreshold', options.silenceThreshold);
+    }
+    if (options.outputFormat) {
+      formData.append('outputFormat', options.outputFormat);
+    }
+
+    const response = await fetch('/api/export/clean', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`Export failed (${response.status}): ${errText}`);
+    }
+
+    return await response.blob();
+  }
+
+  /**
+   * Transcribe an audio track via the server.
+   * @param {Blob} blob - Audio to transcribe
+   * @returns {Promise<{text: string, segments: Array}>} - Transcript result
+   */
+  async transcribeTrack(blob) {
+    const formData = new FormData();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    formData.append('audio', blob, `recording-${timestamp}.webm`);
+
+    const response = await fetch('/api/export/transcribe', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`Transcription failed (${response.status}): ${errText}`);
+    }
+
+    return await response.json();
   }
 }

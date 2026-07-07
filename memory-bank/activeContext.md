@@ -1,14 +1,52 @@
 # Active Context: OpenStudio
 
-**Last Updated**: 2026-03-14 (Signal UX Redesign — Branch Ready)
+**Last Updated**: 2026-05-25 (v0.3.2 cut — capability gating + cloud LLM support)
 
 ## Current Phase
 
-**Release**: 0.3-dev (Signal UX Redesign)
-**Branch**: `feat/signal-ux-redesign`
-**Status**: Implementation complete, all E2E tests passing, ready for review/merge
-**Focus**: Merge Signal UX redesign, then merge v0.2.1 security PR
-**Next**: Merge both branches to main, deploy
+**Release**: 0.3.2 (committed today) — capability-gated AI UX + OpenAI-compatible cloud provider support
+**Branch**: `main`
+**Status**: v0.3.0, v0.3.1, and v0.3.2 all shipped. AI features (Transcribe, Show Notes, MP3 export) now self-document — when prereqs are missing, the UI surfaces a modal with exact install commands instead of failing on click. Cloud LLM providers (OpenAI, Together, Groq, Anthropic-via-shim) work via `LLM_API_KEY`; local providers still work with no env change. README documents per-provider setup.
+**Focus**: Deploy v0.3.2 to openstudio.zerologic.com, then resume podcast Tasks 4-8 (click-to-cut on transcript, per-segment recording, ID3 tag export, chapter markers, multi-track to final export)
+
+## Recent Updates (2026-05-25)
+
+### v0.3.2 Release ✅
+- **`GET /api/capabilities` endpoint** — new `server/lib/capabilities.js` probes ffmpeg, ffprobe, the whisper.cpp binary, the Whisper model file, and the configured LLM endpoint; in-memory 60 s cache so the endpoint is cheap to hit on every page load
+- **Frontend capability gating** — `web/js/capability-modal.js` reads `/api/capabilities` on load and disables Transcribe / Show Notes / MP3 format option when their prereqs are missing. Clicking a gated control opens a modal with the exact install commands. Modal DOM in `web/index.html`, styling in `web/css/studio.css`.
+- **Cloud LLM support via `LLM_API_KEY`** — `show-notes-generator.js` sends `Authorization: Bearer <key>` when the env var is set; works with OpenAI, Together AI, Groq, and any OpenAI-compatible shim (litellm, anthropic-openai-compat). Local providers (LM Studio, Ollama, llama.cpp server) leave it blank and continue to work unchanged.
+- **README "Optional AI Tooling" rewritten** — per-provider `.env` snippets for LM Studio, Ollama, OpenAI, Together AI, Groq, plus an Anthropic-via-shim note; new Feature Gating subsection explains the UX
+- **Behavior is purely additive** — when all prereqs are present, the UI is visually identical to v0.3.1
+- **Version**: 0.3.1 → 0.3.2
+- See `tasks/2026-05/260525_v032_capability_gating.md`
+
+### v0.3.1 Release ✅
+- **MP3 export unbroken** — `run()` exported from `audio-cleaner.js` and imported into `server.js`; also fixed a pre-existing multipart parser bug where the last form field with no per-part `Content-Length` pulled in the trailing boundary marker, causing `outputFormat=mp3` to silently fall back to WAV
+- **`POST /api/export/zip` added** — streams all tracks back as a single archive via `archiver`; 500 MB cap, filename preservation, mirrors `handleExportClean` parser
+- **"Download All" wired to zip endpoint** — `bundleAndDownload()` in `recording-manager.js`; falls back to per-track downloads on any failure so users always get their files
+- **LLM endpoint env-driven** — `LLM_BASE_URL` / `LLM_MODEL` in `show-notes-generator.js`, default `http://localhost:1234/v1` / `qwen3.5-35b`; removed hardcoded private dev IP that was unreachable for anyone else
+- **README rewritten** — Features grouped (Broadcast core / Recording & post-production / Optional AI tooling / Security & ops); new "Optional AI Tooling" section with whisper.cpp + LLM setup; new "Known Gaps" section; Roadmap updated (0.3.1 done, 0.4 adds invite-link UI)
+- **Version**: 0.3.0 → 0.3.1
+- Smoke-tested on host node process; all paths verified
+- See `tasks/2026-05/260525_v031_fixes.md`
+
+### v0.3.0 Release Cut ✅
+- `package.json` 0.2.0 → 0.3.0
+- Inter / JetBrains Mono / Space Grotesk self-hosted as variable woff2 (latin subset, ~100 KB total in `web/fonts/`); Google Fonts CDN dependency removed
+- `server/lib/static-server.js` learned `.woff2` / `.woff` MIME types
+- `#status` pill moved out of `.header-center` back into `.header-right` (regression from Signal redesign, commit `490fdc9`); header grid simplified; mobile responsive grid updated
+- Verified via Chrome DevTools MCP — zero external font requests; `document.fonts` reports all three families `loaded`; status pill 40px from right edge
+- See `tasks/2026-05/250526_v030_release.md`
+
+## Recent Updates (2026-05-18)
+
+### Task 1: Show Notes from Transcript ✅ COMPLETE
+- **New file:** `server/lib/show-notes-generator.js` — LLM-powered episode title + summary generation via LM Studio (Qwen 35B), with graceful fallback if LLM unavailable
+- **Server endpoint:** `POST /api/export/show-notes` — accepts transcript segments JSON, returns `{title, summary, segments}`
+- **UI:** New "Post-Production" section below export panel — transcribe button → auto-generate show notes via whisper.cpp + LLM → display in editable panel with segment markers
+- **Actions:** Copy to clipboard (formatted markdown) or Download as `.md` file with episode title, summary, and timestamped segments
+- **Flow:** Stop recording → see Export panel → scroll to "— or —" divider → click "Transcribe Recording" → show notes appear in panel
+- **Fallback:** If LM Studio is unreachable, generates generic title from transcript words + uses raw transcript as summary
 
 ## Recent Decisions
 
@@ -80,7 +118,7 @@ Client (browser) ──────────────── Node.js Server
   ├─ MediaRecorder (recording)
   ├─ Fetch/WS → Icecast (streaming, host/ops only)
   └─ Signal UX Design System
-       ├─ Space Grotesk / Inter / JetBrains Mono (Google Fonts)
+       ├─ Space Grotesk / Inter / JetBrains Mono (self-hosted woff2, web/fonts/)
        ├─ Void/Signal/Data color palette
        ├─ Segmented LED meters + waveform oscilloscope
        ├─ ON AIR animations (body.broadcasting CSS class)
@@ -92,18 +130,38 @@ Client (browser) ──────────────── Node.js Server
 
 | File | Change |
 |------|--------|
-| `web/index.html` | Google Fonts, signal chain layout, wordmark+tagline, waveform canvas, deck panels |
-| `web/css/studio.css` | Complete rewrite — Signal design system tokens, atmosphere, components, animations |
+| `web/index.html` | Signal chain layout, wordmark+tagline, waveform canvas, deck panels (fonts now self-hosted via @font-face in studio.css, v0.3.0) |
+| `web/css/studio.css` | Complete rewrite — Signal design system tokens, atmosphere, components, animations (v0.3.0: @font-face blocks added at top; header layout simplified) |
 | `web/js/main.js` | body.broadcasting state, speaking detection, card animations, deck panels, role names |
 | `web/js/volume-meter.js` | Segmented LED mode, waveform oscilloscope mode, speaking callback, HiDPI |
 
 ## Blockers & Risks
 
-### Signal UX
-- Google Fonts CDN dependency (fonts load from external CDN — could self-host for zero-dependency)
-- `prefers-reduced-motion` disables all animations but visual design still works
+### Current
+- `openstudio.zerologic.com` deployment needs refresh (Power Move + v0.3.0 + v0.3.1 not yet live)
+- TURN credentials in station-manifest need real values for production
+- whisper.cpp clone + model download are still manual (not scripted); flagged in README's Known Gaps
+- Invite-link UI is still missing — server supports the flow, no button in the studio chrome (planned for 0.4)
 
-### Pending from Previous
-- PR #1 (v0.2.1 Security Hardening) still needs merge
-- JWT_SECRET must be set in production
-- TURN credentials in station-manifest need real values
+### Resolved 2026-05-25
+- ✅ Google Fonts CDN dependency removed (v0.3.0)
+- ✅ Status pill back in header right corner (v0.3.0)
+- ✅ package.json bumped to 0.3.0 then 0.3.1
+- ✅ MP3 export actually produces an MP3 (v0.3.1)
+- ✅ `/api/export/zip` endpoint exists and works (v0.3.1)
+- ✅ "Download All" returns a single bundle (v0.3.1)
+- ✅ LLM endpoint is configurable via env vars, defaults to LM Studio's standard port (v0.3.1)
+- ✅ README reflects the actual shipped feature set, with honest AI-tooling setup docs (v0.3.1)
+- ✅ `GET /api/capabilities` reports availability of ffmpeg, ffprobe, whisper.cpp, Whisper model, and LLM endpoint; frontend uses it to gate AI buttons (v0.3.2)
+- ✅ Capability-gating UX — disabled buttons open an info modal with install commands instead of failing on click (v0.3.2)
+- ✅ Cloud LLM providers (OpenAI, Together, Groq, Anthropic-via-shim) supported via `LLM_API_KEY` env var; local providers unchanged (v0.3.2)
+
+### Technical Notes
+- Self-hosted fonts are variable woff2 (latin subset); non-Latin glyphs fall back to system fonts
+- `prefers-reduced-motion` disables all animations but visual design still works
+- `GET /api/capabilities` is the single source of truth for AI feature availability; backend probes filesystem + env, caches result for 60 s, frontend renders gated state from the snapshot. No live LLM network probe — we report `configured`/`authenticated`, not `reachable`.
+- `LLM_API_KEY` env var (new in v0.3.2) is optional; when set, show-notes generator sends `Authorization: Bearer <key>`. Required for OpenAI/Together/Groq; leave blank for LM Studio/Ollama/llama.cpp server.
+- LLM endpoint via `LLM_BASE_URL` / `LLM_MODEL` env vars; default `http://localhost:1234/v1` (LM Studio's standard port). Operators running their LLM on a non-default host/port override via `.env`. If the LLM is unreachable, show-notes falls back to a transcript-derived title and summary.
+- whisper.cpp is a gitlink without `.gitmodules` config — submodule update commands will fail; clone of the whisper.cpp tree must be set up manually (instructions now in README's Optional AI Tooling section)
+- `archiver` is declared in `server/package.json` but a fresh clone needs `cd server && npm install` before the signaling server can boot (otherwise: `Cannot find package 'archiver'`)
+- Multipart parser pattern: when no per-part `Content-Length` is present, take `Math.min(nextRegularBoundary, endBoundary)` and trim trailing CRLF; the original `handleExportClean` lacked the end-boundary check, which silently broke MP3 export detection

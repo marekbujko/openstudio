@@ -42,6 +42,29 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=6736
+      # In docker-compose the signaling container reaches Icecast via the
+      # compose service name on the bridge network. These are intentionally NOT
+      # substituted from the host's .env (which describes host-side visibility
+      # for local-mode dev, where Icecast is reached at localhost:6737).
+      - ICECAST_HOST=icecast
+      - ICECAST_PORT=8000
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - JWT_SECRET=${JWT_SECRET:-}
+      - ROOM_TTL_MS=${ROOM_TTL_MS:-0}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+    volumes:
+      # Bind-mount source for hot-edit in dev (node --watch via npm run dev).
+      # Production deploys use the prod compose file which does not mount source.
+      - ./server:/app
+      - ./web:/web
+      - ./station-manifest.json:/station-manifest.json:ro
+      # Keep node_modules inside the container so host arch mismatches (macOS host,
+      # Linux container) don't cross-contaminate native modules.
+      - /app/node_modules
+    working_dir: /app
+    command: ["npm", "run", "dev"]
     depends_on:
       - icecast
       - coturn
